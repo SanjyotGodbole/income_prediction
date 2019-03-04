@@ -1,0 +1,484 @@
+---
+title: "CUTe_CSE7302c Submission 4"
+author: "Sanjyot Godbole"
+date: "January 9, 2019"
+output: 
+  html_document:
+    toc: true
+    theme: united
+    toc_depth: 4
+    toc_float:
+      collapsed: false
+      smooth_scroll: false  
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Transformation using discretization
+##Clearing the environment
+```{r}
+rm(list = ls(all=TRUE))
+```
+
+###All libraries used
+```{r}
+# library(corrplot)
+# library(DMwR)
+# library(dummies)
+# library(MASS)
+# library(car)
+# library(ggplot2)
+# library(ROCR)
+# library(dplyr)
+# library(stringr)
+# library(caret)
+# library(infotheo)
+# library(tidyr)
+# library(purrr)
+```
+
+##Loading the dataset and creating safe copies to retreive the original data in case of excessive data loss
+```{r}
+getwd()
+datadir = "C:/Work/INSOFE/Study Material/CUTe/CSE7302c_Statistics and Probability in Decision Modeling"
+setwd(datadir)
+
+trainData = read.csv("train_data.csv", header = T,sep = ",")
+dataToPredict = read.csv("test_data.csv", header = T,sep = ",")
+dim(trainData)
+dim(dataToPredict)
+
+trainData_SafeCopy = trainData
+dataToPredict_SafeCopy = dataToPredict
+```
+
+##Descriptive Analysis
+```{r}
+str(trainData)
+head(trainData)
+tail(trainData)
+summary(trainData)
+names(trainData)
+dim(trainData)
+```
+###Observation: 
+*index, age financial_weight, years_of_education, tax_paid, loan_taken, gain, loss, working_hours contains numerical data*
+*working_sector, qualification, marital_status, occupation, relationship, ethnicity, gender and country has categorical data*
+
+##Handling missing values
+**Using KNN Imputation**
+```{r}
+dim(trainData)
+sum(is.na(trainData))
+
+sum(is.na(trainData$tax_paid))
+#As tax_paid has 29206 NA values, removing it
+trainData$tax_paid = NULL
+
+#Checking the number of missing values left
+sum(is.na(trainData))
+
+##As are still 4143 NA values in the data. Choose to remove respective observations
+##trainData_no_NA =na.omit(trainData)
+
+#Imputting remanining values using KNNimputation
+library(DMwR)
+
+trainData_no_NA<-knnImputation(trainData)
+#View(trainData_no_NA)
+
+#Checking the number of missing values left
+sum(is.na(trainData_no_NA))
+
+
+# # rows where qualification is NA has NA values for most for the other features. Hence, omitting those rows
+# library(dplyr)
+# trainData_1 = filter(trainData,  !is.na(trainData$qualification))
+
+#Repeating same steps for test_data
+dim(dataToPredict)
+sum(is.na(dataToPredict))
+
+sum(is.na(dataToPredict$tax_paid))
+#As tax_paid has 804 NA values out of 976 , removing it.
+dataToPredict$tax_paid = NULL
+
+#Checking the number of missing values left
+sum(is.na(dataToPredict))
+
+#As are still 143 NA values in the data. Choose to remove respective observations
+#dataToPredict_no_NA =na.omit(dataToPredict)
+
+#Imputting remanining values using KNNimputation
+dataToPredict_no_NA<-knnImputation(dataToPredict)
+#View(dataToPredict_no_NA)
+
+#Checking the number of missing values left
+sum(is.na(dataToPredict_no_NA))
+#dim(dataToPredict_no_NA)
+```
+
+## Removing the white spaces
+```{r}
+library(stringr)
+
+trainData_no_NA$working_sector = as.factor(str_trim(trainData_no_NA$working_sector))
+trainData_no_NA$qualification = as.factor(str_trim(trainData_no_NA$qualification))
+trainData_no_NA$marital_status = as.factor(str_trim(trainData_no_NA$marital_status))
+trainData_no_NA$occupation = as.factor(str_trim(trainData_no_NA$occupation))
+trainData_no_NA$relationship = as.factor(str_trim(trainData_no_NA$relationship))
+trainData_no_NA$ethnicity = as.factor(str_trim(trainData_no_NA$ethnicity))
+trainData_no_NA$gender = as.factor(str_trim(trainData_no_NA$gender))
+trainData_no_NA$country = as.factor(str_trim(trainData_no_NA$country))
+
+str(trainData_no_NA)
+
+#Repeating above steps for test_data
+
+dataToPredict_no_NA$working_sector = as.factor(str_trim(dataToPredict_no_NA$working_sector))
+dataToPredict_no_NA$qualification = as.factor(str_trim(dataToPredict_no_NA$qualification))
+dataToPredict_no_NA$marital_status = as.factor(str_trim(dataToPredict_no_NA$marital_status))
+dataToPredict_no_NA$occupation = as.factor(str_trim(dataToPredict_no_NA$occupation))
+dataToPredict_no_NA$relationship = as.factor(str_trim(dataToPredict_no_NA$relationship))
+dataToPredict_no_NA$ethnicity = as.factor(str_trim(dataToPredict_no_NA$ethnicity))
+dataToPredict_no_NA$gender = as.factor(str_trim(dataToPredict_no_NA$gender))
+dataToPredict_no_NA$country = as.factor(str_trim(dataToPredict_no_NA$country))
+print("-------------------------------------------------")
+str(dataToPredict_no_NA)
+```
+
+##Exploratory Data Analysis 
+**1. categorical data**
+```{r}
+## count the number of cases of 0 and 1
+library(dplyr)
+library(ggplot2)
+dplyr::count(trainData_no_NA,target)
+  
+## bar chart of target variable
+targetBarTrain = ggplot(data = trainData_no_NA, aes(as.factor(target)))
+targetBarTrain + geom_bar()
+
+
+## calculate and plot the counts by working sector
+countsByWorkingSector = trainData_no_NA %>% select(working_sector,target) %>%
+                                    group_by(working_sector, target) %>%
+                                      summarise(count=n())
+countsByWorkingSector
+countsByWorkingSectorPlot = ggplot(data = countsByWorkingSector, aes(working_sector, count, fill=as.factor(target)))
+
+countsByWorkingSectorPlot + geom_col()
+
+## calculate and plot the counts by qualification
+countsByqualification = trainData_no_NA %>% select(qualification,target) %>%
+                                    group_by(qualification, target) %>%
+                                      summarise(count=n())
+countsByqualification
+countsByqualificationPlot = ggplot(data = countsByqualification, aes(qualification, count, fill=as.factor(target)))
+
+countsByqualificationPlot + geom_col()
+
+## calculate and plot the counts by marital_status
+countsBymarital_status = trainData_no_NA %>% select(marital_status,target) %>%
+                                    group_by(marital_status, target) %>%
+                                      summarise(count=n())
+countsBymarital_status
+countsBymarital_statusPlot = ggplot(data = countsBymarital_status, aes(marital_status, count, fill=as.factor(target)))
+
+countsBymarital_statusPlot + geom_col()
+
+## calculate and plot the counts by occupation
+countsByoccupation = trainData_no_NA %>% select(occupation,target) %>%
+                                    group_by(occupation, target) %>%
+                                      summarise(count=n())
+countsByoccupation
+countsByoccupationPlot = ggplot(data = countsByoccupation, aes(occupation, count, fill=as.factor(target)))
+
+countsByoccupationPlot + geom_col()
+
+## calculate and plot the counts by relationship
+countsByrelationship = trainData_no_NA %>% select(relationship,target) %>%
+                                    group_by(relationship, target) %>%
+                                      summarise(count=n())
+countsByrelationship
+countsByrelationshipPlot = ggplot(data = countsByrelationship, aes(relationship, count, fill=as.factor(target)))
+
+countsByrelationshipPlot + geom_col()
+
+## calculate and plot the counts by ethnicity
+countsByethnicity = trainData_no_NA %>% select(ethnicity,target) %>%
+                                    group_by(ethnicity, target) %>%
+                                      summarise(count=n())
+countsByethnicity
+countsByethnicityPlot = ggplot(data = countsByethnicity, aes(ethnicity, count, fill=as.factor(target)))
+
+countsByethnicityPlot + geom_col()
+
+## calculate and plot the counts by gender
+countsBygender = trainData_no_NA %>% select(gender,target) %>%
+                                    group_by(gender, target) %>%
+                                      summarise(count=n())
+countsBygender
+countsBygenderPlot = ggplot(data = countsBygender, aes(gender, count, fill=as.factor(target)))
+
+countsBygenderPlot + geom_col()
+
+## calculate and plot the counts by country
+countsBycountry = trainData_no_NA %>% select(country,target) %>%
+                                    group_by(country, target) %>%
+                                      summarise(count=n())
+countsBycountry
+countsBycountryPlot = ggplot(data = countsBycountry, aes(country, count, fill=as.factor(target)))
+
+countsBycountryPlot + geom_col()
+
+```
+###Observation
+*above plots and summary table of counts grouped by category and target values shows details of the imbalance across the variables*
+
+**2. Numerical Data**
+```{r}
+#install.packages("tidyr") 
+#install.packages("purrr") 
+library(tidyr) 
+library(purrr) 
+library(ggplot2)
+
+trainData_no_NA %>% 
+  purrr::keep(is.numeric) %>% 
+  tidyr::gather() %>% 
+  ggplot2::ggplot(aes(value))+ 
+  facet_wrap(~key, scales='free')+ 
+  geom_histogram() 
+
+dataToPredict_no_NA %>% 
+  purrr::keep(is.numeric) %>% 
+  tidyr::gather() %>% 
+  ggplot2::ggplot(aes(value))+ 
+  facet_wrap(~key, scales='free')+ 
+  geom_histogram() 
+
+```
+###Observation
+*Index should not be charted as it is a unique id*
+*years_of_education, loan_taken should be factorised*
+
+
+##Preprocessing and Transformations
+**Discretization of age, working_hours, financial_weight**
+```{r}
+#For train data
+trainData_no_NA$years_of_education = NULL
+trainData_no_NA$loan_taken = NULL
+trainData_no_NA$target = as.factor(trainData_no_NA$target)
+
+
+row.names(trainData_no_NA) = trainData_no_NA$index
+trainData_no_NA$index = NULL
+
+         #######New Transformations#########
+#Discretization
+
+library(infotheo)
+age=discretize(trainData_no_NA$age,disc="equalwidth",nbins=14)       #For splitting the data in 7 equal width (max-min)/n where n is number of bins
+table(age)
+trainData_no_NA$age = as.factor(age$X)
+
+workingHours=discretize(trainData_no_NA$working_hours,disc="equalwidth",nbins=10)       #For splitting the data in 7 equal width (max-min)/n where n is number of bins
+table(workingHours)
+trainData_no_NA$working_hours = as.factor(workingHours$X)
+
+FinWt=discretize(log10(trainData_no_NA$financial_weight),disc="equalwidth",nbins=10)       #For splitting the data in 7 equal width (max-min)/n where n is number of bins
+table(FinWt)
+trainData_no_NA$financial_weight = as.factor(FinWt$X)
+
+#Z = data.frame(trainData_no_NA$gain - trainData_no_NA$loss)
+
+#write.csv(Z,"z.csv", row.names=T)
+
+#class(z)
+
+#trainData_no_NA$age = log10(trainData_no_NA$age)
+#trainData_no_NA$financial_weight = sqrt(trainData_no_NA$financial_weight)
+
+#########################################################################################
+#Repeating above steps for test_data
+dataToPredict_no_NA$years_of_education = NULL
+dataToPredict_no_NA$loan_taken = NULL
+
+row.names(dataToPredict_no_NA) = dataToPredict_no_NA$index
+dataToPredict_no_NA$index=NULL
+
+         #######New Transformations#########
+#Discretization
+
+#library(infotheo)
+age_DTP=discretize(dataToPredict_no_NA$age,disc="equalwidth",nbins=14)       #For splitting the data in 7 equal width (max-min)/n where n is number of bins
+table(age_DTP)
+dataToPredict_no_NA$age = as.factor(age_DTP$X)
+
+workingHours_DTP=discretize(dataToPredict_no_NA$working_hours,disc="equalwidth",nbins=10)       #For splitting the data in 7 equal width (max-min)/n where n is number of bins
+table(workingHours_DTP)
+dataToPredict_no_NA$working_hours = as.factor(workingHours_DTP$X)
+
+FinWt_DTP=discretize(log10(dataToPredict_no_NA$financial_weight),disc="equalwidth",nbins=10)       #For splitting the data in 7 equal width (max-min)/n where n is number of bins
+table(FinWt_DTP)
+dataToPredict_no_NA$financial_weight = as.factor(FinWt_DTP$X)
+
+#dataToPredict_no_NA$age = log10(dataToPredict_no_NA$age)
+#dataToPredict_no_NA$financial_weight = sqrt(dataToPredict_no_NA$financial_weight)
+
+
+```
+
+#Splitting data for validation
+```{r}
+library(caret)
+set.seed(123)
+# The argument "y" to the createDataPartition() function is the response variable
+# The argument "p" is the percentage of data that goes to training
+# The argument "list" should be input a boolean (T or F). Remember to put list = F, else the output is going to  be a list and your data can't be subsetted with it
+
+#using years_of_education column (trainData)
+train_rows <- createDataPartition(trainData_no_NA$target, p = 0.7, list = F)
+trainData_no_NA_train_1 <- trainData_no_NA[train_rows, ]
+trainData_no_NA_test_1 <- trainData_no_NA[-train_rows, ]
+
+table(trainData_no_NA_train_1$target)
+table(trainData_no_NA_test_1$target)
+dim(trainData_no_NA_train_1)
+dim(trainData_no_NA_test_1)
+
+```
+
+## Building the Logistic Regression Model
+
+```{r}
+model_4 <- glm(target~., data = trainData_no_NA_train_1, family = binomial)    
+summary(model_4)
+```
+
+
+# ##Logistic Regression predictions
+# **1. Getting a list of predictions (probability scores) using the predict() function**
+```{r}
+# Use the argument 'type = "response"' in the predict function to get a list of predictions between 0 and 1
+# By default if no dataset is mentioned, training data is used
+probTrain <- predict(model_4, type = "response")
+#probTrain
+```
+
+**2. Using the ROCR package create a “prediction()” object**
+```{r}
+library(ROCR)
+# The prediction object takes the probability scores and the original levels for theses data as input
+pred <- prediction(probTrain, trainData_no_NA_train_1$target) 
+#pred
+# The prediction object contains a list of predictions (probability scores), original class labels, cutoffs, false positives, true positives, true negatives, false negatives, No. of positive predictions and No. of negative predictions corresponding to these cutoffs. Class distribution in the dataset.
+```
+
+**3. Extract performance measures (True Positive Rate and False Positive Rate) using the “performance()” function from the ROCR package**
+```{r}
+perf <- performance(pred, measure="tpr", x.measure="fpr")
+#perf
+
+#Plot the ROC curve using the extracted performance measures (TPR and FPR)
+plot(perf, col=rainbow(10), colorize=T, print.cutoffs.at=seq(0,1,0.05))
+
+#Extracting the AUC score of the ROC curve and store it in a variable named “auc” using the performance() function on the object pred
+
+perf_auc <- performance(pred, measure="auc")
+
+# Accesssing the auc score from the performance object
+auc <- perf_auc@y.values[[1]]
+print(auc)
+```
+
+##Choosing a Cutoff Value
+
+*Based on the trade off between TPR and FPR depending on the business domain, a cutoff of 0.25 can be choosen*
+
+##Predictions on test data
+
+*choosing a cutoff value of 0.35, let’s predict the class labels on the test data using our model*
+```{r}
+prob_test <- predict(model_4, trainData_no_NA_test_1, type = "response")
+
+preds_test <- ifelse(prob_test > 0.35, "1", "0")
+```
+
+#Evaluation Metrics for classification
+
+##Manual Computation
+
+**Creating a confusion matrix using the table() function**
+
+###Confusion Matrix
+```{r}
+test_data_labs <- trainData_no_NA_test_1$target
+conf_matrix <- table(test_data_labs, preds_test)
+
+print(conf_matrix)
+```
+
+###Specificity
+**The Proportion of correctly identified negatives by the test/model.**
+```{r}
+specificity <- conf_matrix[1, 1]/sum(conf_matrix[1, ]) #(No of True -ve)/(No of True -ve + No of False +ve)
+print(specificity)
+```
+
+###Sensitivity
+**The Proportion of correctly identified positives by the test/model.**
+```{r}
+sensitivity <- conf_matrix[2, 2]/sum(conf_matrix[2, ])  #(No of True +ve)/(No of True +ve + No of False -ve)
+
+print(sensitivity)
+```
+
+###Accuracy
+**The Proportion of correctly identified psotivies/negatives in the entire population by the test/model**
+```{r}
+accuracy <- sum(diag(conf_matrix))/sum(conf_matrix) #(No of True +ve + No of True -ve)/(Number of subjecta in the population)
+
+print(accuracy)
+```
+
+##Automated Computation through Caret
+**Evaluation metrics for classification can be accessed through the “confusionMatrix()” function from the caret package**
+
+```{r}
+# Using the argument "Positive", we can get the evaluation metrics according to our positive referene level
+preds_test<-data.frame(preds_test)
+confusionMatrix(preds_test$preds_test, trainData_no_NA_test_1$target, positive = "1")
+```
+
+##Predictions on unseen data, i.e., dataToPredict
+
+*choosing a cutoff value of 0.25, let’s predict the class labels on the test data using our model*
+```{r}
+dataToPredict_prob_test <- predict(model_4, dataToPredict_no_NA, type = "response")
+
+dataToPredict_preds_test <- ifelse(dataToPredict_prob_test > 0.35, "1", "0")
+```
+
+#Creating the submission csv
+```{r}
+Final_Prediction = dataToPredict_no_NA
+Final_Prediction$index = row.names(dataToPredict_no_NA)
+Final_Prediction$target = dataToPredict_preds_test
+Final_Prediction_new = data.frame(Final_Prediction$index,Final_Prediction$target)
+
+submission = read.csv("SampleSubmission.csv", header = T, sep = ",")
+
+sub = merge(submission,Final_Prediction_new,by.x="index",by.y="Final_Prediction.index",all.x=TRUE)
+
+sub$target = NULL
+
+colnames(sub) = c("index", "target")
+
+write.csv(sub,"submission_Sanjyot_0.35_V1.4.csv", row.names=F)
+
+```
